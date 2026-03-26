@@ -255,8 +255,17 @@ TextureObject* mgGetTexObjectByID(unsigned texture) {
 }
 
 // Inline mapping for various internal formats to format and type
+static inline bool is_bgra_packed_upload_type(GLenum type) {
+    return type == GL_UNSIGNED_INT_8_8_8_8 || type == GL_UNSIGNED_INT_8_8_8_8_REV;
+}
+
 void internal_convert(GLenum* internal_format, GLenum* type, GLenum* format) {
-    if (format && *format == GL_BGRA) *format = GL_RGBA;
+    if (format && *format == GL_BGRA) {
+        *format = GL_RGBA;
+        if (type && is_bgra_packed_upload_type(*type)) {
+            *type = GL_UNSIGNED_BYTE;
+        }
+    }
 
     switch (*internal_format) {
     case GL_DEPTH_COMPONENT16:
@@ -990,7 +999,7 @@ void glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, G
           glEnumToString(target), level, xoffset, yoffset, width, height, glEnumToString(format), glEnumToString(type),
           pixels)
 
-    if (format == GL_BGRA && type == GL_UNSIGNED_INT_8_8_8_8) {
+    if (format == GL_BGRA && is_bgra_packed_upload_type(type)) {
         format = GL_RGBA;
         type = GL_UNSIGNED_BYTE;
     }
@@ -1142,7 +1151,7 @@ void glReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format
     static int count = 0;
     GLenum prevFormat = format;
 
-    if (format == GL_BGRA && type == GL_UNSIGNED_INT_8_8_8_8) {
+    if (format == GL_BGRA && is_bgra_packed_upload_type(type)) {
         format = GL_RGBA;
         type = GL_UNSIGNED_BYTE;
     }

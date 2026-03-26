@@ -164,6 +164,8 @@ struct global_settings_t {
     bool ext_timer_query;
     bool ext_direct_state_access;
     bool buffer_coherent_as_flush;
+    bool sodium_compat_mode;
+    bool fake_native_strings;
     size_t max_glsl_cache_size;
     multidraw_mode_t multidraw_mode;
     AngleDepthClearFixMode angle_depth_clear_fix_mode;

@@ -19,6 +19,11 @@
 
 Version GLVersion;
 
+static bool shouldExposeMobileGluesIdentity() {
+    return !global_settings.sodium_compat_mode && !global_settings.fake_native_strings &&
+           global_settings.hide_mg_env_level == HideMGEnvLevel::Disabled;
+}
+
 void glGetIntegerv(GLenum pname, GLint* params) {
     LOG()
     LOG_D("glGetIntegerv, pname: %s", glEnumToString(pname))
@@ -63,8 +68,10 @@ void glGetIntegerv(GLenum pname, GLint* params) {
         break;
     }
     case GL_CONTEXT_FLAGS: {
-        (*params) =
-            GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT | GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT | GL_CONTEXT_FLAG_NO_ERROR_BIT;
+        (*params) = GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT | GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT;
+        if (!global_settings.sodium_compat_mode && global_settings.ignore_error != IgnoreErrorLevel::None) {
+            (*params) |= GL_CONTEXT_FLAG_NO_ERROR_BIT;
+        }
         break;
     }
     case GL_ARRAY_BUFFER_BINDING:
@@ -112,7 +119,7 @@ std::string GetExtensionsList() {
 void InitGLESBaseExtensions() {
     std::vector<std::string> extensions;
 
-    if (global_settings.hide_mg_env_level == HideMGEnvLevel::Disabled) {
+    if (shouldExposeMobileGluesIdentity()) {
         extensions.push_back("GL_MG_mobileglues");
         extensions.push_back("GL_MG_backend_string_getter_access");
         extensions.push_back("GL_MG_settings_string_dump");
@@ -137,10 +144,12 @@ void InitGLESBaseExtensions() {
                                "GL_ARB_clear_texture",
                                "GL_ARB_get_program_binary",
                                "GL_ARB_separate_shader_objects",
-                               "GL_ARB_multi_bind",
-                               "GL_KHR_no_error"};
+                               "GL_ARB_multi_bind"};
 
     extensions.insert(extensions.end(), std::begin(base_exts), std::end(base_exts));
+    if (!global_settings.sodium_compat_mode && global_settings.ignore_error != IgnoreErrorLevel::None) {
+        extensions.push_back("GL_KHR_no_error");
+    }
 
     if (global_settings.hide_mg_env_level >= HideMGEnvLevel::Level1) {
         for (int i = extensions.size() - 1; i > 0; --i) {
@@ -244,7 +253,9 @@ const GLubyte* glGetString(GLenum name) {
     switch (name) {
     case GL_VENDOR: {
         if (vendorString.empty()) {
-            if (global_settings.hide_mg_env_level == HideMGEnvLevel::Disabled) {
+            if (global_settings.fake_native_strings) {
+                vendorString = "Apple";
+            } else if (global_settings.hide_mg_env_level == HideMGEnvLevel::Disabled) {
                 std::string vendor = "Swung0x48, BZLZHH, Tungsten";
                 vendorString = vendor;
             } else {
@@ -266,7 +277,9 @@ const GLubyte* glGetString(GLenum name) {
     case GL_VERSION: {
         if (versionString.empty()) {
             versionString = GLVersion.toString();
-            if (global_settings.hide_mg_env_level == HideMGEnvLevel::Disabled) {
+            if (global_settings.fake_native_strings) {
+                versionString += " Apple iOS Compatibility Profile";
+            } else if (global_settings.hide_mg_env_level == HideMGEnvLevel::Disabled) {
                 if (GLVersion.toInt(2) == DEFAULT_GL_VERSION) {
                     versionString += " MobileGlues ";
                 } else {
@@ -316,7 +329,12 @@ const GLubyte* glGetString(GLenum name) {
     }
     case GL_RENDERER: {
         if (rendererString == std::string("")) {
-            if (global_settings.hide_mg_env_level == HideMGEnvLevel::Disabled) {
+            if (global_settings.fake_native_strings) {
+                rendererString = getGpuName();
+                if (rendererString.empty()) {
+                    rendererString = "Apple GPU";
+                }
+            } else if (global_settings.hide_mg_env_level == HideMGEnvLevel::Disabled) {
                 std::string gpuName = getGpuName();
                 std::string glesName = getGLESName();
                 rendererString = std::string(gpuName) + " | " + std::string(glesName);
@@ -359,7 +377,9 @@ const GLubyte* glGetString(GLenum name) {
                 baseVer = "4.60";
             }
 
-            if (global_settings.hide_mg_env_level >= HideMGEnvLevel::Level1) {
+            if (global_settings.fake_native_strings) {
+                shadingLangString = baseVer;
+            } else if (global_settings.hide_mg_env_level >= HideMGEnvLevel::Level1) {
                 shadingLangString = baseVer;
 
                 int junkCount = rand() % 2 + 1;
@@ -390,7 +410,10 @@ const GLubyte* glGetString(GLenum name) {
 #endif
     }
     case GL_SETTINGS_MG: {
-        if (global_settings.hide_mg_env_level >= HideMGEnvLevel::Level1) return GLES.glGetString(name);
+        if (!shouldExposeMobileGluesIdentity() ||
+            global_settings.hide_mg_env_level >= HideMGEnvLevel::Level1) {
+            return GLES.glGetString(name);
+        }
 
         static char* settings_string = nullptr;
         std::string tmp = dump_settings_string("  ");

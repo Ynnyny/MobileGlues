@@ -16,18 +16,95 @@
 
 global_settings_t global_settings;
 
+static int normalizeCustomGLVersionInt(int customGLVersionInt) {
+    if (customGLVersionInt > 46) {
+        customGLVersionInt = 46;
+    } else if (customGLVersionInt < 32 && customGLVersionInt != 0) {
+        customGLVersionInt = 32;
+    } else if (customGLVersionInt > 33 && customGLVersionInt < 40) {
+        customGLVersionInt = 33;
+    } else if (customGLVersionInt == 0) {
+        customGLVersionInt = DEFAULT_GL_VERSION;
+    }
+
+    return customGLVersionInt;
+}
+
 void init_settings() {
 #if defined(__APPLE__)
     global_settings.angle = AngleMode::Disabled;
-    global_settings.ignore_error = IgnoreErrorLevel::Partial;
+    global_settings.ignore_error = IgnoreErrorLevel::None;
     global_settings.ext_compute_shader = false;
+    global_settings.ext_timer_query = true;
+    global_settings.ext_direct_state_access = true;
+    global_settings.buffer_coherent_as_flush = true;
+    global_settings.sodium_compat_mode = false;
+    global_settings.fake_native_strings = false;
     global_settings.max_glsl_cache_size = 30 * 1024 * 1024;
     global_settings.multidraw_mode = multidraw_mode_t::DrawElements;
     global_settings.angle_depth_clear_fix_mode = AngleDepthClearFixMode::Disabled;
-    global_settings.ext_direct_state_access = true;
     global_settings.custom_gl_version = {0, 0, 0}; // will go default
     global_settings.fsr1_setting = FSR1_Quality_Preset::Disabled;
     global_settings.hide_mg_env_level = HideMGEnvLevel::Disabled;
+
+    int sodiumCompat = 0;
+    int fakeNativeStrings = 0;
+    int ignoreError = static_cast<int>(global_settings.ignore_error);
+    int extComputeShader = global_settings.ext_compute_shader ? 1 : 0;
+    int extTimerQuery = global_settings.ext_timer_query ? 1 : 0;
+    int extDirectStateAccess = global_settings.ext_direct_state_access ? 1 : 0;
+    int multidrawMode = static_cast<int>(global_settings.multidraw_mode);
+    int customGLVersionInt = 0;
+    int hideMGEnvLevel = static_cast<int>(global_settings.hide_mg_env_level);
+
+    GetEnvVarBool("AMETHYST_SODIUM_COMPAT", &sodiumCompat, 0);
+    GetEnvVarBool("AMETHYST_MG_FAKE_NATIVE_STRINGS", &fakeNativeStrings, sodiumCompat);
+    GetEnvVarInt("AMETHYST_MG_IGNORE_ERROR", &ignoreError, ignoreError);
+    GetEnvVarBool("AMETHYST_MG_EXT_COMPUTE_SHADER", &extComputeShader, extComputeShader);
+    GetEnvVarBool("AMETHYST_MG_EXT_TIMER_QUERY", &extTimerQuery, extTimerQuery);
+    GetEnvVarBool("AMETHYST_MG_EXT_DIRECT_STATE_ACCESS", &extDirectStateAccess, extDirectStateAccess);
+    GetEnvVarInt("AMETHYST_MG_MULTIDRAW_MODE", &multidrawMode, multidrawMode);
+    GetEnvVarInt("AMETHYST_MG_GL_VERSION", &customGLVersionInt, 0);
+    GetEnvVarInt("AMETHYST_MG_HIDE_ENV_LEVEL", &hideMGEnvLevel, hideMGEnvLevel);
+
+    if (sodiumCompat) {
+        fakeNativeStrings = 1;
+        ignoreError = static_cast<int>(IgnoreErrorLevel::None);
+        extComputeShader = 0;
+        extDirectStateAccess = 1;
+        extTimerQuery = 1;
+        multidrawMode = static_cast<int>(multidraw_mode_t::DrawElements);
+        if (customGLVersionInt == 0) {
+            customGLVersionInt = DEFAULT_GL_VERSION;
+        }
+        hideMGEnvLevel = static_cast<int>(HideMGEnvLevel::Disabled);
+    }
+
+    if (ignoreError < static_cast<int>(IgnoreErrorLevel::None) ||
+        ignoreError > static_cast<int>(IgnoreErrorLevel::Full)) {
+        ignoreError = static_cast<int>(IgnoreErrorLevel::None);
+    }
+    if (multidrawMode < static_cast<int>(multidraw_mode_t::Auto) ||
+        multidrawMode >= static_cast<int>(multidraw_mode_t::MaxValue)) {
+        multidrawMode = static_cast<int>(multidraw_mode_t::DrawElements);
+    }
+    if (hideMGEnvLevel < static_cast<int>(HideMGEnvLevel::Disabled) ||
+        hideMGEnvLevel >= static_cast<int>(HideMGEnvLevel::MaxValue)) {
+        hideMGEnvLevel = static_cast<int>(HideMGEnvLevel::Disabled);
+    }
+    if (customGLVersionInt < 0) {
+        customGLVersionInt = 0;
+    }
+
+    global_settings.ignore_error = static_cast<IgnoreErrorLevel>(ignoreError);
+    global_settings.ext_compute_shader = extComputeShader != 0;
+    global_settings.ext_timer_query = extTimerQuery != 0;
+    global_settings.ext_direct_state_access = extDirectStateAccess != 0;
+    global_settings.multidraw_mode = static_cast<multidraw_mode_t>(multidrawMode);
+    global_settings.custom_gl_version = Version(customGLVersionInt == 0 ? 0 : normalizeCustomGLVersionInt(customGLVersionInt));
+    global_settings.hide_mg_env_level = static_cast<HideMGEnvLevel>(hideMGEnvLevel);
+    global_settings.sodium_compat_mode = sodiumCompat != 0;
+    global_settings.fake_native_strings = fakeNativeStrings != 0;
 
 #else
 
@@ -74,15 +151,7 @@ void init_settings() {
         static_cast<int>(angleDepthClearFixMode) >= static_cast<int>(AngleDepthClearFixMode::MaxValue)) {
         angleDepthClearFixMode = AngleDepthClearFixMode::Disabled;
     }
-    if (customGLVersionInt > 46) {
-        customGLVersionInt = 46;
-    } else if (customGLVersionInt < 32 && customGLVersionInt != 0) {
-        customGLVersionInt = 32;
-    } else if (customGLVersionInt > 33 && customGLVersionInt < 40) {
-        customGLVersionInt = 33;
-    } else if (customGLVersionInt == 0) {
-        customGLVersionInt = DEFAULT_GL_VERSION;
-    }
+    customGLVersionInt = normalizeCustomGLVersionInt(customGLVersionInt);
     if (static_cast<int>(fsr1Setting) < 0 ||
         static_cast<int>(fsr1Setting) >= static_cast<int>(FSR1_Quality_Preset::MaxValue)) {
         fsr1Setting = FSR1_Quality_Preset::Disabled;
@@ -163,6 +232,8 @@ void init_settings() {
     global_settings.angle = finalAngleMode;
     LOG_D("Final ANGLE setting: %d", static_cast<int>(global_settings.angle))
     global_settings.buffer_coherent_as_flush = (global_settings.angle == AngleMode::Disabled);
+    global_settings.sodium_compat_mode = false;
+    global_settings.fake_native_strings = false;
 
     if (global_settings.angle == AngleMode::Enabled) {
         // setenv("LIBGL_GLES", "libGLESv2_angle.so", 1);
@@ -212,6 +283,10 @@ void init_settings() {
           static_cast<int>(global_settings.angle_depth_clear_fix_mode))
     LOG_V("[MobileGlues] Setting: bufferCoherentAsFlush       = %i",
           static_cast<int>(global_settings.buffer_coherent_as_flush))
+    LOG_V("[MobileGlues] Setting: sodiumCompat                = %s",
+          global_settings.sodium_compat_mode ? "true" : "false")
+    LOG_V("[MobileGlues] Setting: fakeNativeStrings           = %s",
+          global_settings.fake_native_strings ? "true" : "false")
     if (global_settings.custom_gl_version.isEmpty()) {
         LOG_V("[MobileGlues] Setting: customGLVersion             = (default)");
     } else {

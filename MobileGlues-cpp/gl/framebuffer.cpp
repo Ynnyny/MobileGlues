@@ -45,12 +45,13 @@ void init_framebuffer(framebuffer_t& fbo) {
 }
 void glBindFramebuffer(GLenum target, GLuint framebuffer) {
     ensure_max_attachments();
-    framebuffer_t& fbo = get_framebuffer(framebuffer);
 
     if (framebuffer == 0 && target != GL_READ_FRAMEBUFFER) {
         framebuffer = FSR1_Context::g_renderFBO;
         FSR1_Context::g_dirty = true;
     }
+
+    framebuffer_t& fbo = get_framebuffer(framebuffer); // AMETHYST_MOBILEGLUES_FRAMEBUFFER_FIX
 
     if (target != GL_READ_FRAMEBUFFER) {
         set_gl_state_current_draw_fbo(framebuffer);
@@ -92,6 +93,12 @@ void glDrawBuffer(GLenum buffer) {
     LOG()
     LOG_D("glDrawBuffer %d", buffer)
 
+    ensure_max_attachments();
+    if (current_draw_fbo != 0) {
+        framebuffer_t& fbo = get_framebuffer(current_draw_fbo); // AMETHYST_MOBILEGLUES_FRAMEBUFFER_FIX
+        init_framebuffer(fbo);
+    }
+
     //    GLint currentFBO;
     //    GLES.glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFBO);
     if (current_draw_fbo == 0) {
@@ -116,12 +123,14 @@ void glDrawBuffer(GLenum buffer) {
 }
 void glDrawBuffers(GLsizei n, const GLenum* bufs) {
     LOG()
+    ensure_max_attachments();
     if (current_draw_fbo == 0) {
         GLES.glDrawBuffers(n, bufs);
         return;
     }
 
-    framebuffer_t& fbo = framebuffers[current_draw_fbo];
+    framebuffer_t& fbo = get_framebuffer(current_draw_fbo); // AMETHYST_MOBILEGLUES_FRAMEBUFFER_FIX
+    init_framebuffer(fbo);
 
     bool all_none = true;
     for (int i = 0; i < n; ++i) {
